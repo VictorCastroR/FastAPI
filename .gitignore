@@ -1,0 +1,56 @@
+# ================================
+# Entorno virtual de Python
+# ================================
+# Ignora la carpeta donde se instala tu entorno virtual
+venv/
+.env        # Archivo de variables de entorno (API keys, DB passwords)
+.env.*      # Ignora cualquier otro .env temporal o de pruebas
+
+# ================================
+# Archivos compilados de Python
+# ================================
+# Python crea archivos bytecode para acelerar la ejecución
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ================================
+# Alembic / Migraciones
+# ================================
+# Ignora solo los archivos compilados y caché de Alembic
+migrations/versions/*.pyc
+migrations/versions/__pycache__/
+# NOTA: Las migraciones .py normalmente se versionan, ¡no las ignores!
+
+# ================================
+# Logs
+# ================================
+*.log       # Archivos de log generados por tu aplicación
+logs/       # Carpeta de logs si la creas
+
+# ================================
+# Bases de datos locales
+# ================================
+*.sqlite   # Bases de datos SQLite locales
+*.db       # Archivos de base de datos locales (PostgreSQL no necesita esto)
+*.bak      # Backups locales
+
+# ================================
+# IDEs y editores
+# ================================
+.vscode/   # Configuración de VSCode
+.idea/     # Configuración de PyCharm o IntelliJ
+*.swp      # Archivos temporales de Vim
+*.swo      # Archivos temporales de Vim
+*.bak      # Copias de seguridad
+
+# ================================
+# MacOS
+# ================================
+.DS_Store  # Archivos ocultos que crea macOS en carpetas
+
+# ================================
+# Extras opcionales
+# ================================
+# Caché de pytest u otros tests
+.pytest_cache/

@@ -1,24 +1,30 @@
 from pydantic import BaseModel, EmailStr
+from datetime import datetime
 from typing import Optional
 
-# Datos que devuelve la API
-class UserOut(BaseModel):
-    id: int
+# --- Schemas base ---
+class UserBase(BaseModel):
     email: EmailStr
+    full_name: str              # Ahora es obligatorio
+    is_active: bool = True      # Siempre inicia activo
+    is_superuser: Optional[bool] = False
+
+class UserCreate(UserBase):
+    password: str  # Obligatorio solo al crear
+
+class UserUpdate(BaseModel):
+    email: Optional[EmailStr] = None
+    full_name: Optional[str] = None
+    password: Optional[str] = None
+    is_active: Optional[bool] = None
+    is_superuser: Optional[bool] = None
+
+# --- Schema para respuestas ---
+class UserOut(UserBase):
+    id: int
     slug: str
-    is_active: bool
-    is_superuser: bool
+    created_at: datetime
+    updated_at: Optional[datetime]
 
     class Config:
-        orm_mode = True
-        
-# Datos que se reciben al crear usuario
-class UserCreate(BaseModel):
-    email: EmailStr
-    password: str
-
-# Datos que se reciben al actualizar usuario
-class UserUpdate(BaseModel):
-    email: Optional[EmailStr]
-    password: Optional[str]
-    is_active: Optional[bool]
+        orm_mode = True  # Permite retornar directamente objetos SQLAlchemy

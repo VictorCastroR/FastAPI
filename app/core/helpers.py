@@ -1,17 +1,24 @@
-from slugify import slugify
+import re
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
-def generate_slug(text: str, lowercase: bool = True) -> str:
-    """
-    Genera un slug para un texto dado.
+def slugify(text: str) -> str:
+    """Convierte un texto a formato slug básico"""
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9]+", "-", text)
+    return text.strip("-")
 
-    Args:
-        text (str): Texto original a transformar.
-        lowercase (bool): Convierte el resultado a minúsculas.
+async def generate_unique_slug(db: AsyncSession, model, base_text: str) -> str:
+    base_slug = slugify(base_text)
+    slug = base_slug
+    index = 1
 
-    Returns:
-        str: Slug generado.
-    """
-    slug = slugify(text)
-    if lowercase:
-        return slug.lower()
+    while True:
+        result = await db.execute(select(model).where(model.slug == slug))
+        existing = result.scalars().first()
+        if not existing:
+            break
+        slug = f"{base_slug}-{index:03d}"
+        index += 1
+
     return slug
