@@ -32,8 +32,11 @@ logger.add(
     diagnose=True         # Intenta incluir contexto extra y variables
 )
 
-# Opcional: también puedes mandar errores críticos a stderr para depuración local (remueve en producción si no lo necesitas)
+# Opcional: también puedes mandar errores críticos a stderr para depuración local
 logger.add(sys.stderr, level="ERROR", format=LOG_FORMAT)
 
-# Exporta el logger para uso global
+# Exporta solo el logger para uso centralizado
 __all__ = ["logger"]
+
+# Ejemplo recomendado de invocación:
+# logger.error("Descripción del error", extra={"path": request.url.path, ...})
