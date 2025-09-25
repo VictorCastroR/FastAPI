@@ -2,12 +2,10 @@ from loguru import logger
 import sys
 from pathlib import Path
 
-# Archivo donde se almacenarán SOLO los logs de errores
 LOG_DIR = Path("logs")
-LOG_DIR.mkdir(exist_ok=True)
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 ERROR_LOG_FILE = LOG_DIR / "errors.log"
 
-# Formato personalizado con contexto para cada error
 LOG_FORMAT = (
     "<green>{time:YYYY-MM-DD HH:mm:ss}</green> "
     "<level>{level}</level> - "
@@ -16,27 +14,36 @@ LOG_FORMAT = (
     "Extra: {extra}"
 )
 
-# Limpia cualquier handler estándar previo
 logger.remove()
 
-# Agrega sink asíncrono, guarda solo errores de nivel ERROR o superior
+# Agrega sink para errores en archivo
 logger.add(
     str(ERROR_LOG_FILE),
     level="ERROR",
     format=LOG_FORMAT,
-    enqueue=True,         # Asíncrono y robusto para producción
-    rotation="10 MB",     # Rotación por tamaño, ajusta según tu contexto
-    retention="10 days",  # Retiene archivos por 10 días
-    compression="zip",    # Comprime logs antiguos para ahorro de espacio
-    backtrace=True,       # Incluye traceback detallado
-    diagnose=True         # Intenta incluir contexto extra y variables
+    enqueue=True,
+    rotation="10 MB",
+    retention="10 days",
+    compression="zip",
+    backtrace=True,
+    diagnose=True
 )
 
-# Opcional: también puedes mandar errores críticos a stderr para depuración local
+# Opcional: salida estándar para errors, útil en desarrollo
 logger.add(sys.stderr, level="ERROR", format=LOG_FORMAT)
 
-# Exporta solo el logger para uso centralizado
 __all__ = ["logger"]
 
-# Ejemplo recomendado de invocación:
-# logger.error("Descripción del error", extra={"path": request.url.path, ...})
+"""
+Ejemplo de uso en la app:
+
+from core.logger import logger
+
+logger.error(
+    "Mensaje de error con contexto",
+    extra={
+        "path": request.url.path,
+        "user": getattr(request.state, 'user', None)
+    }
+)
+"""
