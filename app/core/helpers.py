@@ -1,6 +1,8 @@
 from slugify import slugify as real_slugify
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from typing import List, Generic, TypeVar
+from pydantic.generics import GenericModel
 
 def slugify(text: str) -> str:
     """Convierte un texto a slug-friendly usando python-slugify para internacionalización."""
@@ -32,3 +34,28 @@ async def generate_unique_slug(db: AsyncSession, model, base_text: str, digits: 
         index += 1
 
     return slug
+
+
+# 🔹 TypeVar nos permite crear "tipos genéricos"
+# Ejemplo: ListResponse[UserOut], ListResponse[RoleOut], etc.
+T = TypeVar("T")
+
+
+class GenericList(GenericModel, Generic[T]):
+    """
+    Respuesta estándar para listas pequeñas SIN paginación.
+    Úsala cuando esperas pocos datos (ej: lista de roles, sucursales, etc.)
+    """
+    total: int  # Número total de elementos encontrados
+    items: List[T]  # Lista de objetos de tipo T (ej: UserOut, RoleOut)
+
+
+class GenericPaginatedList(GenericModel, Generic[T]):
+    """
+    Respuesta estándar para listas GRANDES CON paginación.
+    Úsala en vistas donde el dataset puede crecer (ej: usuarios, productos, etc.)
+    """
+    total: int  # Número total de elementos disponibles en la BD
+    page: int   # Página actual
+    size: int   # Cantidad de elementos por página
+    items: List[T]  # Lista de objetos de la página actual (tipo T)

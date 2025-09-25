@@ -1,7 +1,11 @@
-from pydantic import BaseModel, EmailStr, Field, constr
+from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
 from typing import Optional, List
+from app.core.helpers import GenericList, GenericPaginatedList
 
+# ----------------------
+# Schemas base
+# ----------------------
 class UserBase(BaseModel):
     """Datos básicos del usuario, compartidos en varios esquemas."""
     email: EmailStr = Field(..., description="Correo electrónico del usuario")
@@ -11,11 +15,11 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     """Datos necesarios para crear un usuario, incluye contraseña obligatoria."""
-    password: constr(min_length=8) = Field(..., description="Contraseña del usuario (mínimo 8 caracteres)")
+    password: str = Field(..., min_length=8, description="Contraseña del usuario (mínimo 8 caracteres)")
 
 class UserUpdatePassword(BaseModel):
     """Esquema para actualizar la contraseña del usuario."""
-    password: constr(min_length=8) = Field(..., description="Nueva contraseña del usuario (mínimo 8 caracteres)")
+    password: str = Field(..., min_length=8, description="Nueva contraseña del usuario (mínimo 8 caracteres)")
 
 class UserLogin(BaseModel):
     """Esquema para login, incluye correo y contraseña."""
@@ -26,10 +30,13 @@ class UserUpdate(BaseModel):
     """Campos opcionales para actualización parcial del usuario."""
     email: Optional[EmailStr] = Field(None, description="Correo electrónico")
     full_name: Optional[str] = Field(None, description="Nombre completo")
-    password: Optional[constr(min_length=8)] = Field(None, description="Contraseña")
+    password: Optional[str] = Field(None, min_length=8, description="Contraseña")
     is_active: Optional[bool] = Field(None, description="Estado activo")
     is_superuser: Optional[bool] = Field(None, description="Permisos de superusuario")
 
+# ----------------------
+# Schemas de respuesta
+# ----------------------
 class UserOut(UserBase):
     """Datos devueltos en respuestas que incluyen información del usuario."""
     id: int = Field(..., description="Identificador único del usuario")
@@ -40,17 +47,13 @@ class UserOut(UserBase):
     class Config:
         orm_mode = True
 
-class UserList(BaseModel):
-    """Esquema para respuesta de lista de usuarios."""
-    total: int = Field(..., description="Total de usuarios encontrados")
-    users: List[UserOut] = Field(..., description="Lista de usuarios")
+class UserList(GenericList[UserOut]):
+    """Lista genérica de usuarios para respuestas sin paginación."""
+    pass
 
-class PaginatedResponse(BaseModel):
-    """Esquema base para respuestas paginadas genéricas."""
-    total: int = Field(..., description="Total de elementos")
-    page: int = Field(..., description="Página actual")
-    size: int = Field(..., description="Tamaño de página")
-    items: List[UserOut] = Field(..., description="Elementos de la página")
+class PaginatedUserList(GenericPaginatedList[UserOut]):
+    """Lista paginada de usuarios con total, página y tamaño."""
+    pass
 
 class ErrorResponse(BaseModel):
     """Esquema para mensajes de error uniformes."""

@@ -4,22 +4,28 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import or_
 from typing import Optional
 
-from fastapi_pagination.ext.async_sqlalchemy import paginate
+from fastapi_pagination.ext.sqlalchemy import paginate
 from fastapi_pagination import Page
 
 from app.modules.user.model import User
 from app.modules.user.schema import UserCreate, UserUpdate
-from app.core.auth import hash_password
-from app.core.helpers import generate_unique_slug
+from app.modules.user.auth import hash_password
+from app.core.helpers import generate_unique_slug, GenericList, GenericPaginatedList
 
 
 # ======================
 # Crear usuario
 # ======================
 async def create_user(db: AsyncSession, user_in: UserCreate) -> User:
+    """
+    Crea un nuevo usuario.
+    Pasos:
+    1. Hashea la contraseña.
+    2. Genera un slug único.
+    3. Crea instancia de User y la añade a la sesión.
+    4. Commit y refresh.
+    """
     hashed_pw = hash_password(user_in.password)
-
-    # Generar slug único
     slug = await generate_unique_slug(db, User, user_in.full_name)
 
     new_user = User(
@@ -45,6 +51,7 @@ async def create_user(db: AsyncSession, user_in: UserCreate) -> User:
 # Obtener por ID
 # ======================
 async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
+    """Retorna un usuario activo por su ID."""
     result = await db.execute(select(User).where(User.id == user_id))
     return result.scalars().first()
 
@@ -53,6 +60,7 @@ async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
 # Obtener por slug
 # ======================
 async def get_user_by_slug(db: AsyncSession, slug: str) -> Optional[User]:
+    """Retorna un usuario activo por su slug único."""
     result = await db.execute(select(User).where(User.slug == slug))
     return result.scalars().first()
 
@@ -61,6 +69,7 @@ async def get_user_by_slug(db: AsyncSession, slug: str) -> Optional[User]:
 # Obtener por email
 # ======================
 async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
+    """Retorna un usuario activo por su email."""
     result = await db.execute(select(User).where(User.email == email))
     return result.scalars().first()
 
@@ -71,9 +80,13 @@ async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
 async def list_users(
     db: AsyncSession,
     search: Optional[str] = None,
-) -> Page[User]:
-    query = select(User)
-
+) -> GenericPaginatedList[User]:
+    """
+    Lista usuarios paginados.
+    - Aplica búsqueda por email o full_name si se recibe parámetro `search`.
+    - Retorna GenericPaginatedList para consistencia con el helper.
+    """
+    query = select(User).where(User.is_active == True)  # Solo activos
     if search:
         query = query.where(
             or_(
@@ -81,14 +94,26 @@ async def list_users(
                 User.full_name.ilike(f"%{search}%"),
             )
         )
-
     return await paginate(db, query)
 
 
 # ======================
 # Actualizar usuario
 # ======================
-async def update_user(db: AsyncSession, user: User, user_in: UserUpdate, regenerate_slug: bool = False) -> User:
+async def update_user(
+    db: AsyncSession,
+    user: User,
+    user_in: UserUpdate,
+    regenerate_slug: bool = False
+) -> User:
+    """
+    Actualiza campos de un usuario.
+    Pasos:
+    1. Actualiza password si viene.
+    2. Actualiza full_name y opcionalmente genera nuevo slug.
+    3. Actualiza is_active y is_superuser si vienen.
+    4. Commit y refresh.
+    """
     if user_in.password:
         user.hashed_password = hash_password(user_in.password)
 
@@ -107,9 +132,9 @@ async def update_user(db: AsyncSession, user: User, user_in: UserUpdate, regener
     try:
         await db.commit()
         await db.refresh(user)
-    except Exception:
+    except IntegrityError:
         await db.rollback()
-        raise
+        raise ValueError("Error al actualizar usuario")
     return user
 
 
@@ -117,6 +142,11 @@ async def update_user(db: AsyncSession, user: User, user_in: UserUpdate, regener
 # Borrado lógico (soft delete)
 # ======================
 async def delete_user(db: AsyncSession, user: User) -> User:
+    """
+    Realiza soft delete.
+    - Cambia is_active a False.
+    - Commit y refresh.
+    """
     user.is_active = False
     db.add(user)
     try:
