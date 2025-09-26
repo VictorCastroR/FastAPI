@@ -4,6 +4,14 @@ from sqlalchemy.future import select
 from typing import List, Generic, TypeVar
 from pydantic.generics import GenericModel
 
+from fastapi import Request, HTTPException, Depends
+from jose import JWTError
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.config import get_settings
+from app.modules.user import auth, crud
+from app.core.database import get_async_session
+
+
 def slugify(text: str) -> str:
     """Convierte un texto a slug-friendly usando python-slugify para internacionalización."""
     return real_slugify(text)
@@ -59,3 +67,35 @@ class GenericPaginatedList(GenericModel, Generic[T]):
     page: int   # Página actual
     size: int   # Cantidad de elementos por página
     items: List[T]  # Lista de objetos de la página actual (tipo T)
+    
+    
+settings = get_settings()
+
+async def get_current_user(
+    request: Request,
+    db: AsyncSession = Depends(get_async_session)
+):
+    """
+    Obtiene el usuario autenticado desde el header Authorization: Bearer <token>.
+    - Decodifica el JWT.
+    - Obtiene el usuario de la DB.
+    - Levanta 401 si el token es inválido o el usuario no existe.
+    """
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Token no proporcionado")
+
+    token = auth_header.split(" ")[1]
+    payload = auth.decode_token(token)
+    if not payload or payload.get("type") != "access":
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+    user = await crud.get_user_by_id(db, int(user_id))
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="Usuario no válido")
+
+    return user

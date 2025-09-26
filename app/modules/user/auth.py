@@ -46,9 +46,13 @@ def create_refresh_token(subject: str) -> str:
     expires_minutes = settings.refresh_token_expire_days * 24 * 60
     return create_token(subject, expires_minutes, token_type="refresh")
 
-async def save_refresh_token(db: AsyncSession, token: str, user_id: int, expires_at: datetime) -> RefreshToken:
+async def save_refresh_token(db: AsyncSession, token: str, user_id: int, expires_at: datetime = None) -> RefreshToken:
+    if expires_at is None:
+        # Usamos la configuración de días de expiración de refresh token
+        expires_at = datetime.utcnow() + timedelta(days=settings.refresh_token_expire_days)
+    
     """Guarda un token de refresco en la base de datos."""
-    db_token = RefreshToken(token=token, user_id=user_id, expires_at=expires_at)
+    db_token = RefreshToken(token=token, user_id=user_id, expires_at=expires_at, revoked=False)
     db.add(db_token)
     try:
         await db.commit()
@@ -58,6 +62,7 @@ async def save_refresh_token(db: AsyncSession, token: str, user_id: int, expires
         logger.error(f"Error guardando refresh token: {e}")
         raise
     return db_token
+
 
 async def validate_refresh_token(db: AsyncSession, token: str) -> Optional[RefreshToken]:
     """
@@ -76,6 +81,7 @@ async def validate_refresh_token(db: AsyncSession, token: str) -> Optional[Refre
         return None
     return db_token
 
+
 def decode_token(token: str) -> Optional[dict]:
     """Decodifica cualquier JWT, retornando el payload o None si falla."""
     try:
@@ -84,6 +90,7 @@ def decode_token(token: str) -> Optional[dict]:
     except JWTError as e:
         logger.warning(f"JWT decode error: {e}")
         return None
+
 
 async def revoke_refresh_token(db: AsyncSession, token: str):
     """Revoca manualmente un token de refresco."""

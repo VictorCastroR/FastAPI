@@ -5,25 +5,19 @@ from sqlalchemy import or_
 from typing import Optional
 
 from fastapi_pagination.ext.sqlalchemy import paginate
-from fastapi_pagination import Page
-
 from app.modules.user.model import User
-from app.modules.user.schema import UserCreate, UserUpdate
+from app.modules.user.schema import UserCreate, UserUpdate, UserOut
 from app.modules.user.auth import hash_password
-from app.core.helpers import generate_unique_slug, GenericList, GenericPaginatedList
+from app.core.helpers import generate_unique_slug, GenericPaginatedList
 
 
 # ======================
 # Crear usuario
 # ======================
-async def create_user(db: AsyncSession, user_in: UserCreate) -> User:
+async def create_user(db: AsyncSession, user_in: UserCreate) -> UserOut:
     """
     Crea un nuevo usuario.
-    Pasos:
-    1. Hashea la contraseña.
-    2. Genera un slug único.
-    3. Crea instancia de User y la añade a la sesión.
-    4. Commit y refresh.
+    Devuelve un schema UserOut para usar en responses.
     """
     hashed_pw = hash_password(user_in.password)
     slug = await generate_unique_slug(db, User, user_in.full_name)
@@ -44,34 +38,40 @@ async def create_user(db: AsyncSession, user_in: UserCreate) -> User:
         await db.rollback()
         raise ValueError("El email ya existe")
     await db.refresh(new_user)
-    return new_user
+    return UserOut.model_validate(new_user)  # Convertimos a schema Pydantic
 
 
 # ======================
 # Obtener por ID
 # ======================
 async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
-    """Retorna un usuario activo por su ID."""
-    result = await db.execute(select(User).where(User.id == user_id))
-    return result.scalars().first()
-
-
-# ======================
-# Obtener por slug
-# ======================
-async def get_user_by_slug(db: AsyncSession, slug: str) -> Optional[User]:
-    """Retorna un usuario activo por su slug único."""
-    result = await db.execute(select(User).where(User.slug == slug))
-    return result.scalars().first()
+    result = await db.execute(select(User).where(User.id == user_id, User.is_active == True))
+    user = result.scalars().first()
+    if user:
+        return user
+    return None
 
 
 # ======================
 # Obtener por email
 # ======================
-async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
-    """Retorna un usuario activo por su email."""
-    result = await db.execute(select(User).where(User.email == email))
-    return result.scalars().first()
+async def get_user_by_email(db: AsyncSession, user_email: str) -> Optional[User]:
+    result = await db.execute(select(User).where(User.email == user_email, User.is_active == True))
+    user = result.scalars().first()
+    if user:
+        return user
+    return None
+
+
+# ======================
+# Obtener por slug
+# ======================
+async def get_user_by_slug(db: AsyncSession, slug: str) -> Optional[UserOut]:
+    result = await db.execute(select(User).where(User.slug == slug, User.is_active == True))
+    user = result.scalars().first()
+    if user:
+        return UserOut.model_validate(user)
+    return None
 
 
 # ======================
@@ -80,13 +80,13 @@ async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
 async def list_users(
     db: AsyncSession,
     search: Optional[str] = None,
-) -> GenericPaginatedList[User]:
+) -> GenericPaginatedList[UserOut]:
     """
     Lista usuarios paginados.
-    - Aplica búsqueda por email o full_name si se recibe parámetro `search`.
-    - Retorna GenericPaginatedList para consistencia con el helper.
+    - Solo activos.
+    - Busca por email o full_name si search está definido.
     """
-    query = select(User).where(User.is_active == True)  # Solo activos
+    query = select(User).where(User.is_active == True)
     if search:
         query = query.where(
             or_(
@@ -94,7 +94,12 @@ async def list_users(
                 User.full_name.ilike(f"%{search}%"),
             )
         )
-    return await paginate(db, query)
+
+    # paginate devuelve Page[User], pero usamos UserOut para el schema
+    result = await paginate(db, query)
+    # Convertir cada item a UserOut
+    result.items = [UserOut.model_validate(u) for u in result.items]
+    return result
 
 
 # ======================
@@ -105,28 +110,27 @@ async def update_user(
     user: User,
     user_in: UserUpdate,
     regenerate_slug: bool = False
-) -> User:
+) -> UserUpdate:
     """
-    Actualiza campos de un usuario.
-    Pasos:
-    1. Actualiza password si viene.
-    2. Actualiza full_name y opcionalmente genera nuevo slug.
-    3. Actualiza is_active y is_superuser si vienen.
-    4. Commit y refresh.
+    Actualiza solo los campos que vienen no nulos en user_in y retorna UserUpdate.
     """
-    if user_in.password:
-        user.hashed_password = hash_password(user_in.password)
 
-    if user_in.full_name is not None:
-        user.full_name = user_in.full_name
+    # Diccionario dinámico de campos a actualizar
+    update_data = user_in.model_dump(exclude_unset=True)
+
+    # Manejo de password
+    if "password" in update_data:
+        user.hashed_password = hash_password(update_data.pop("password"))
+
+    # Manejo de full_name y slug
+    if "full_name" in update_data:
+        user.full_name = update_data.pop("full_name")
         if regenerate_slug:
             user.slug = await generate_unique_slug(db, User, user.full_name)
 
-    if user_in.is_active is not None:
-        user.is_active = user_in.is_active
-
-    if user_in.is_superuser is not None:
-        user.is_superuser = user_in.is_superuser
+    # Otros campos dinámicos
+    for field, value in update_data.items():
+        setattr(user, field, value)
 
     db.add(user)
     try:
@@ -135,17 +139,16 @@ async def update_user(
     except IntegrityError:
         await db.rollback()
         raise ValueError("Error al actualizar usuario")
-    return user
 
+    # Devuelve solo los campos actualizables
+    return UserUpdate.model_validate(user)
 
 # ======================
 # Borrado lógico (soft delete)
 # ======================
-async def delete_user(db: AsyncSession, user: User) -> User:
+async def delete_user(db: AsyncSession, user: User) -> UserOut:
     """
-    Realiza soft delete.
-    - Cambia is_active a False.
-    - Commit y refresh.
+    Soft delete: cambia is_active a False.
     """
     user.is_active = False
     db.add(user)
@@ -155,4 +158,4 @@ async def delete_user(db: AsyncSession, user: User) -> User:
     except Exception:
         await db.rollback()
         raise
-    return user
+    return UserOut.model_validate(user)
